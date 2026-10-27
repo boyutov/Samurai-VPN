@@ -54,10 +54,17 @@ class AgentInstalledTest {
     }
     @Test void loginItemIsRegisteredAndRemoved() throws Exception {
         Path data = folder.resolve("data");
+        AgentProcess.autostart(data, false); // removing an absent item is not an error
         try {
             AgentProcess.autostart(data, true);
-            assertTrue(loginItem().contains(data.toAbsolutePath().toString()), loginItem());
-        } finally { AgentProcess.autostart(data, false); }
+            String item = loginItem();
+            assertTrue(item.contains(data.toAbsolutePath().toString()), item);
+        } catch (Throwable failure) {
+            // Keep the first failure visible; cleanup problems are attached to it.
+            try { AgentProcess.autostart(data, false); } catch (Exception cleanup) { failure.addSuppressed(cleanup); }
+            throw failure;
+        }
+        AgentProcess.autostart(data, false);
         assertFalse(loginItem().contains(data.toAbsolutePath().toString()));
     }
 
