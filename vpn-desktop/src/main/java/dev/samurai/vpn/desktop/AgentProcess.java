@@ -99,17 +99,18 @@ final class AgentProcess {
     }
     private static void windowsRun(String value) throws Exception {
         // The value travels in an environment variable, never inside the script text.
-        String script = "$PSModuleAutoLoadingPreference = 'None'; Import-Module Microsoft.PowerShell.Management -ErrorAction Stop; "
-                + "$key = 'HKCU:\\Software\\Microsoft\\Windows\\CurrentVersion\\Run'; "
+        String script = "$ErrorActionPreference = 'Stop'; try { $key = 'HKCU:\\Software\\Microsoft\\Windows\\CurrentVersion\\Run'; "
                 + (value == null ? "Remove-ItemProperty -Path $key -Name 'SamuraiVPNAgent' -ErrorAction SilentlyContinue"
-                        : "Set-ItemProperty -Path $key -Name 'SamuraiVPNAgent' -Value $env:SAMURAI_AGENT_COMMAND");
+                        : "Set-ItemProperty -Path $key -Name 'SamuraiVPNAgent' -Value $env:SAMURAI_AGENT_COMMAND")
+                + " } catch { [Console]::Out.WriteLine($_.Exception.Message); exit 3 }";
         var builder = new ProcessBuilder(Path.of(System.getenv().getOrDefault("SystemRoot", "C:\\Windows"),
                 "System32", "WindowsPowerShell", "v1.0", "powershell.exe").toString(), "-NoProfile", "-NonInteractive", "-Command", script);
         if (value != null) builder.environment().put("SAMURAI_AGENT_COMMAND", value);
         var process = builder.redirectErrorStream(true).start();
         process.getOutputStream().close();
         String output = new String(process.getInputStream().readAllBytes(), StandardCharsets.UTF_8);
-        if (process.waitFor() != 0) throw new IOException("Cannot change the login item: " + output.strip());
+        int exit = process.waitFor();
+        if (exit != 0) throw new IOException("Cannot change the login item (exit " + exit + "): " + output.strip());
     }
     private static String xml(String text) {
         return text.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;");
