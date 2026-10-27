@@ -16,7 +16,8 @@ The earlier conversational time estimates are not a delivery commitment.
 - [x] Swing create/join, profile reopen, peer list, invitation, export and revocation.
 - [x] Local two-device demo and background IO.
 - [x] jpackage build script with bundled Java runtime.
-- [ ] Interactive Windows/macOS validation and signed installers.
+- [x] Installers: .deb, .pkg, Inno Setup .exe; built, installed and tested in CI.
+- [ ] Interactive Windows/macOS validation; signed and notarized installers.
 
 ## Next — real cross-platform tunnels
 

@@ -15,6 +15,15 @@ punching) с возвратом на relay. Для этого нужна слу�
 в файл и восстанавливает их после перезапуска.
 Проект пока не является готовой заменой Radmin VPN и не проходил независимый аудит безопасности.
 
+## Установщики
+
+Каждая сборка CI (GitHub Actions → прогон → Artifacts) выкладывает установщики:
+`samurai-vpn_*.deb` (Linux), `SamuraiVPN-*.pkg` (macOS), `SamuraiVPN-*-setup.exe` (Windows).
+Каждый из них в CI устанавливается, проверяется настоящим туннелем через службу и
+удаляется. Собрать локально: `./build.sh` (на Windows `mvn install`), затем
+`./package-installer.sh` или `./package-installer.ps1`. Установщики не подписаны.
+Подробности: docs/LINUX.md, docs/WINDOWS.md, docs/MACOS.md.
+
 ## Открыть в IntelliJ IDEA
 
 `File → Open → samurai-vpn/pom.xml → Open as Project`.

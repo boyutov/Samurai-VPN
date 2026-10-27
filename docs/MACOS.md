@@ -31,6 +31,19 @@ root. Установщик копирует `wireguard-go` и `wg` в `/Library/
 
 ## Установка
 
+Установщик: `SamuraiVPN-0.3.0.pkg` (артефакт installer-macOS сборки CI, или
+`./build.sh` и `./package-installer.sh`). Сначала `brew install wireguard-go wireguard-tools`,
+без них установка останавливается. Пакет ставит приложение в «Программы» и службу
+(тот же install-service.sh). Удаление:
+
+    sudo "/Library/Application Support/SamuraiVPN Setup/uninstall.sh"
+
+Пакет не подписан и не нотаризован: откройте его через Finder → «Открыть» (правый клик)
+или разрешите в «Системные настройки → Конфиденциальность и безопасность».
+После `brew upgrade` установите пакет повторно, чтобы обновить копии инструментов.
+
+Вручную, без пакета:
+
     brew install wireguard-go wireguard-tools
     ./build.sh && ./package.sh                     # dist/SamuraiVPN.app
     sudo ./native/macos/install-service.sh dist/SamuraiVPN.app

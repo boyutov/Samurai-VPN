@@ -20,7 +20,22 @@ Windows — см. docs/WINDOWS.md, macOS — docs/MACOS.md.
 связывает его с владельцем. Уже существующий чужой интерфейс не изменяется.
 Команды разных окон сериализуются через закрытый root-каталог /run/samurai-vpn.
 
-## Подготовка компонента
+## Установка пакетом (Debian, Ubuntu)
+
+Пакет `samurai-vpn_0.3.0_amd64.deb` (артефакт installer-Linux сборки CI, или
+`./build.sh` и `./package-installer.sh`):
+
+    sudo apt install ./samurai-vpn_0.3.0_amd64.deb
+
+Он ставит приложение в /opt/samurai-vpn (ярлык в меню), компонент в
+/opt/samurai-vpn-helper и запускает службу samurai-vpnd; wireguard-tools и iproute2
+подтягиваются зависимостями. Удаление `sudo apt remove samurai-vpn` останавливает
+службу и удаляет интерфейсы Samurai (метка samurai-vpn:UID:сеть), остальные не трогает.
+Перед установкой пакета удалите ручную установку (разделы ниже), иначе её unit в
+/etc/systemd/system перекроет unit пакета. В CI пакет устанавливается и проверяется
+LinuxInstalledServiceTest и AgentInstalledTest (туннель через службу, агент без окна).
+
+## Подготовка компонента вручную
 
 На текущем компьютере комплект dist/helper уже подготовлен. Для пересборки:
 

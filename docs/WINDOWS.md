@@ -33,6 +33,16 @@ PowerShell. Первая проверка на устройстве описан
 
 ## Установка
 
+Установщик: `SamuraiVPN-0.3.0-setup.exe` (артефакт installer-Windows сборки CI, или
+`mvn install` и `./package-installer.ps1` с Inno Setup 6). Сначала установите
+WireGuard for Windows (https://www.wireguard.com/install/), без него установщик
+останавливается. Он ставит приложение в `C:\Program Files\SamuraiVPN`, ярлык в меню
+«Пуск» и службу для учётной записи, запустившей установку (`/ServiceUser=ИМЯ` — для
+другой). Удаление — «Установка и удаление программ»: служба, туннели Samurai и ключи
+удаляются, WireGuard остаётся. Установщик не подписан: SmartScreen покажет предупреждение.
+
+Вручную, без установщика:
+
 1. Установите WireGuard for Windows: https://www.wireguard.com/install/
 2. Соберите приложение: `mvn verify`, затем `./package.ps1` (получится `dist\SamuraiVPN`).
 3. В PowerShell от имени администратора:
