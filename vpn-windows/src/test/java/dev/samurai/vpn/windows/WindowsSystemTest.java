@@ -40,8 +40,31 @@ class WindowsSystemTest {
         long inheritedMs = (System.nanoTime() - start) / 1_000_000;
         System.out.println("ROUTES cleared env: " + clearedMs + " ms, exit " + cleared.exitCode() + ", stderr: " + cleared.errors().strip()
                 + "\nROUTES inherited env: " + inheritedMs + " ms, exit " + inherited.waitFor() + ", output " + output.length() + " chars");
+        if (clearedMs >= 10_000) System.out.println("ROUTES needs: " + neededVariables());
         assertEquals(0, cleared.exitCode(), cleared.errors());
         assertTrue(clearedMs < 10_000, "route query took " + clearedMs + " ms");
+    }
+    /** Bisects the inherited variables down to one that makes PowerShell fast; only names are printed. */
+    private static String neededVariables() throws Exception {
+        var candidates = new ArrayList<>(new TreeSet<>(System.getenv().keySet()));
+        if (!fast(candidates)) return "none: slow even with the inherited environment";
+        while (candidates.size() > 1) {
+            var half = new ArrayList<>(candidates.subList(0, candidates.size() / 2));
+            candidates = fast(half) ? half : new ArrayList<>(candidates.subList(candidates.size() / 2, candidates.size()));
+        }
+        return fast(candidates) ? candidates.toString() : "a combination, not a single variable";
+    }
+    private static boolean fast(List<String> variables) throws Exception {
+        var builder = new ProcessBuilder(powershell());
+        builder.environment().clear();
+        builder.environment().put("SystemRoot", System.getenv("SystemRoot"));
+        builder.environment().put("PATH", System.getenv("SystemRoot") + "\\System32");
+        for (String name : variables) if (System.getenv(name) != null) builder.environment().put(name, System.getenv(name));
+        var process = builder.redirectErrorStream(true).redirectOutput(ProcessBuilder.Redirect.DISCARD).start();
+        process.getOutputStream().close();
+        boolean done = process.waitFor(5, java.util.concurrent.TimeUnit.SECONDS);
+        process.destroyForcibly(); process.waitFor();
+        return done;
     }
     private static List<String> powershell() {
         return List.of(WindowsEngine.POWERSHELL, "-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-Command", WindowsEngine.ROUTES);
