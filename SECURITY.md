@@ -49,15 +49,22 @@ invalidates memberships, not previously exported keys.
 The 10.203.0.0/16 allocation pool may conflict with existing routes; there is no native
 route-conflict detection yet.
 
-Revocation currently removes API membership and excludes the peer from future
-exports. It DOES NOT remove a key from already-running WireGuard interfaces. All
-remaining peers must export and apply an updated profile. Reliable automatic
-revocation is a release blocker. Likewise, this is a split tunnel, not an anonymity
+Revocation removes API membership at once and stops relaying the member's traffic.
+Members whose tunnel runs through the tunnel service remove the key from their running
+interface within about 30 seconds (background agent, also with the window closed).
+Members who imported an exported profile into WireGuard, or use Linux without
+samurai-vpnd, keep the key until they apply an updated profile. Likewise, this is a split tunnel, not an anonymity
 or full-device internet VPN; no kill switch is advertised.
 
-The Linux privileged helper is described in docs/LINUX.md. Windows/macOS have no
-helper yet. There is no hole punching or automatic firewall management.
-Build success on an OS does not prove tunnel operation there.
+The privileged tunnel components are described in docs/LINUX.md, docs/WINDOWS.md and
+docs/MACOS.md; on Windows and macOS they are installed and exercised in CI, not yet on
+user devices. There is no automatic firewall management.
+
+The background agent (docs/AGENT.md) runs as the signed-in user with no privileges. It
+reads the profile tokens the user already owns and talks to the tunnel service over the
+same socket as the window. Its files hold no keys or tokens; a process of the same user
+can change them, which it could do to the profiles anyway. It registers a per-user login
+item while a tunnel is connected and removes it on the last disconnect.
 
 The optional UDP relay (docs/RELAY.md) forwards WireGuard ciphertext only; it never
 holds private keys. It binds a source address to a port only after a handshake with

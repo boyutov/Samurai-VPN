@@ -23,11 +23,11 @@ The earlier conversational time estimates are not a delivery commitment.
 - [x] Native helper contract, least-privilege IPC and allowlisted operations (Linux).
 - [x] Linux adapter lifecycle and route-conflict detection (namespace-tested).
 - [ ] Linux MTU detection; polkit flow on a real desktop.
-- [x] Windows tunnel service (WireGuard for Windows, SYSTEM scheduled task, AF_UNIX socket); unit-tested only.
+- [x] Windows tunnel service (WireGuard for Windows, SYSTEM scheduled task, AF_UNIX socket); installed and tested in CI, not on a device.
 - [x] macOS tunnel service (wireguard-go + wg, launchd, LOCAL_PEERCRED); engine tested in CI, not on a device.
 - [ ] Windows and macOS validation on real devices.
-- [x] Automated peer refresh (sync every 30 s with the desktop open and samurai-vpnd).
-- [ ] Peer refresh without the desktop window (service-side polling).
+- [x] Automated peer refresh (sync every 30 s through the tunnel service).
+- [x] Peer refresh and hole punching without the desktop window (per-user background agent, login item).
 - [ ] Real WireGuard handshake, ping and Minecraft test on all OS pairs.
 - [ ] OS keychains and private ACL verification on Windows/macOS.
 

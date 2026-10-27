@@ -10,6 +10,10 @@ The GUI displays public peer metadata and never claims handshake/online status.
 Desktop enrollment uses a new profile folder with identity.json, session.json and
 owner.json when applicable. Failed enrollment retains recovery files. LocalDemo
 owns its in-process loopback coordinator and stops it when the window closes.
+A connected tunnel is kept current by the background agent (DesktopMain --agent), an
+unprivileged per-user process: membership sync and PathManager run there, not in the
+privileged service, which never holds server tokens or parses server responses.
+The window registers profiles in agent/profiles.json and shows agent/status.json.
 PackageApplication uses jpackage to create a platform-specific application image
 including a Java runtime. It packages only the executable JAR, never profile files.
 
