@@ -1,0 +1,6 @@
+#!/bin/sh
+# Started only by systemd (samurai-vpnd.service), which grants CAP_NET_ADMIN and nothing else.
+# --add-opens exposes the numeric UID behind SO_PEERCRED; without it the service refuses all callers.
+exec /opt/samurai-vpn-helper/runtime/bin/java -Xmx64m -XX:+DisableAttachMechanism \
+  --add-opens java.base/sun.nio.fs=ALL-UNNAMED \
+  -cp /opt/samurai-vpn-helper/samurai-helper.jar dev.samurai.vpn.linux.DaemonMain

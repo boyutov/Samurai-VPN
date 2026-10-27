@@ -1,0 +1,5 @@
+#!/bin/sh
+# Installed root-owned together with its private runtime; never run the desktop as root.
+exec /usr/bin/env -i PATH=/usr/sbin:/usr/bin:/sbin:/bin LANG=C.UTF-8 PKEXEC_UID="${PKEXEC_UID:-}" \
+  /opt/samurai-vpn-helper/runtime/bin/java -Xmx64m -XX:+DisableAttachMechanism \
+  -jar /opt/samurai-vpn-helper/samurai-helper.jar

@@ -1,0 +1,31 @@
+[Unit]
+Description=Samurai VPN tunnel service
+Documentation=file:///opt/samurai-vpn-helper/LINUX.md
+After=network.target
+
+[Service]
+ExecStart=/opt/samurai-vpn-helper/bin/samurai-vpnd
+# Unprivileged throwaway user; the only capability is network administration.
+DynamicUser=yes
+AmbientCapabilities=CAP_NET_ADMIN
+CapabilityBoundingSet=CAP_NET_ADMIN
+NoNewPrivileges=yes
+RuntimeDirectory=samurai-vpnd
+RuntimeDirectoryMode=0755
+UMask=0077
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+PrivateDevices=yes
+ProtectControlGroups=yes
+ProtectKernelTunables=yes
+RestrictAddressFamilies=AF_UNIX AF_NETLINK AF_INET AF_INET6
+RestrictNamespaces=yes
+RestrictRealtime=yes
+LockPersonality=yes
+SystemCallArchitectures=native
+Restart=on-failure
+RestartSec=2
+
+[Install]
+WantedBy=multi-user.target

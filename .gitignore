@@ -1,0 +1,13 @@
+**/target/
+dist/
+.idea/
+*.iml
+.local/
+*.token
+*.key
+*.p12
+*.jks
+*.conf
+*.log
+.DS_Store
+CONTINUE.md

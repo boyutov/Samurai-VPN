@@ -1,0 +1,18 @@
+<project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
+  <modelVersion>4.0.0</modelVersion>
+  <parent><groupId>dev.samurai.vpn</groupId><artifactId>samurai-vpn</artifactId><version>0.3.0-SNAPSHOT</version></parent>
+  <artifactId>vpn-linux</artifactId>
+  <dependencies><dependency><groupId>dev.samurai.vpn</groupId><artifactId>vpn-core</artifactId><version>${project.version}</version></dependency>
+    <!-- Relay and registry are used only by the isolated NAT traversal test. -->
+    <dependency><groupId>dev.samurai.vpn</groupId><artifactId>vpn-server</artifactId><version>${project.version}</version><scope>test</scope></dependency></dependencies>
+  <build><finalName>samurai-linux-library</finalName><plugins>
+    <plugin><groupId>org.apache.maven.plugins</groupId><artifactId>maven-surefire-plugin</artifactId>
+      <configuration><argLine>--add-opens java.base/sun.nio.fs=ALL-UNNAMED</argLine></configuration></plugin>
+    <plugin><groupId>org.apache.maven.plugins</groupId><artifactId>maven-shade-plugin</artifactId>
+    <executions><execution><phase>package</phase><goals><goal>shade</goal></goals><configuration>
+      <createDependencyReducedPom>false</createDependencyReducedPom><outputFile>${project.build.directory}/samurai-helper.jar</outputFile>
+      <transformers><transformer implementation="org.apache.maven.plugins.shade.resource.ManifestResourceTransformer"><mainClass>dev.samurai.vpn.linux.HelperMain</mainClass><manifestEntries><Multi-Release>true</Multi-Release></manifestEntries></transformer></transformers>
+      <filters><filter><artifact>*:*</artifact><excludes><exclude>module-info.class</exclude><exclude>META-INF/versions/*/module-info.class</exclude></excludes></filter></filters>
+    </configuration></execution></executions>
+  </plugin></plugins></build>
+</project>

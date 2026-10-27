@@ -1,0 +1,68 @@
+name: Java verification
+on: [push, pull_request]
+permissions:
+  contents: read
+jobs:
+  verify:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+          cache: maven
+
+      - name: Check scripts
+        if: runner.os == 'Linux'
+        run: |
+          for script in *.sh scripts/*.sh native/*/*.sh; do bash -n "$script"; done
+          shellcheck -S error *.sh scripts/*.sh native/*/*.sh
+      - name: Build and test desktop on Linux
+        if: runner.os == 'Linux'
+        run: xvfb-run -a mvn -B -ntp verify -Dsamurai.gui.test=true
+
+      - name: Check PowerShell scripts
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $failed = $false
+          foreach ($file in Get-ChildItem *.ps1, native/windows/*.ps1) {
+              $errors = $null
+              [System.Management.Automation.Language.Parser]::ParseFile($file.FullName, [ref]$null, [ref]$errors) | Out-Null
+              if ($errors) { $errors | ForEach-Object { "$($file.Name): $_" }; $failed = $true }
+          }
+          if ($failed) { exit 1 }
+      - name: Install WireGuard for Windows
+        if: runner.os == 'Windows'
+        run: choco install wireguard -y --no-progress
+      # The runner is a throwaway administrator VM: the system test creates a real tunnel service.
+      - name: Build and test on Windows with real WireGuard
+        if: runner.os == 'Windows'
+        run: mvn -B -ntp verify "-Dsamurai.system.test=true"
+
+      - name: Install wireguard-go on macOS
+        if: runner.os == 'macOS'
+        run: |
+          brew install wireguard-go wireguard-tools
+          for script in native/macos/*.sh; do bash -n "$script"; done
+          # Same root-owned copies as native/macos/install-service.sh makes.
+          tools="/Library/Application Support/SamuraiVPN/bin"
+          sudo mkdir -p "$tools"
+          sudo cp "$(readlink -f "$(brew --prefix)/bin/wireguard-go")" "$tools/wireguard-go"
+          sudo cp "$(readlink -f "$(brew --prefix)/bin/wg")" "$tools/wg"
+          sudo chown -R root:wheel "/Library/Application Support/SamuraiVPN"
+          otool -L "$tools/wireguard-go" "$tools/wg"
+      - name: Build and test on macOS
+        if: runner.os == 'macOS'
+        run: mvn -B -ntp install
+      # Throwaway VM: the system test needs root for utun, ifconfig and route.
+      - name: Test macOS tunnel as root with real wireguard-go
+        if: runner.os == 'macOS'
+        run: >-
+          sudo -E env "PATH=$PATH" mvn -B -ntp -o "-Duser.home=$HOME" -pl vpn-macos test
+          -Dsamurai.system.test=true -Dtest=MacSystemTest -Dsurefire.failIfNoSpecifiedTests=false
