@@ -26,7 +26,9 @@ class PackageApplication {
                     "--description", "Samurai VPN development preview",
                     // jdk.net: the macOS service reads the caller's UID (SO_PEERCRED) through it.
                     "--add-modules", "java.desktop,java.net.http,java.sql,jdk.httpserver,jdk.crypto.ec,jdk.localedata,jdk.unsupported,jdk.net",
-                    "--java-options", "-Dfile.encoding=UTF-8"));
+                    "--java-options", "-Dfile.encoding=UTF-8",
+                    // jpackage's defaults minus --strip-native-commands: the tunnel services run runtime/bin/java.
+                    "--jlink-options", "--strip-debug --no-man-pages --no-header-files"));
             // macOS bundles require a first version number of at least 1; until 1.0 they keep jpackage's default.
             if (!mac) command.addAll(List.of("--app-version", VERSION));
             Process process = new ProcessBuilder(command).inheritIO().start();
