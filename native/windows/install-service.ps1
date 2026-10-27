@@ -25,8 +25,11 @@ $sid = (New-Object System.Security.Principal.NTAccount($User)).Translate([System
 $program = 'C:\Program Files\SamuraiVPN'
 $task = 'Samurai VPN Service'
 if (Get-ScheduledTask -TaskName $task -ErrorAction SilentlyContinue) { Stop-ScheduledTask -TaskName $task; Unregister-ScheduledTask -TaskName $task -Confirm:$false }
-if (Test-Path -LiteralPath $program) { Remove-Item -LiteralPath $program -Recurse -Force }
-Copy-Item -LiteralPath $source -Destination $program -Recurse
+# The setup program (samurai-vpn.iss) installs the image into Program Files itself.
+if ($source.TrimEnd('\') -ne $program) {
+    if (Test-Path -LiteralPath $program) { Remove-Item -LiteralPath $program -Recurse -Force }
+    Copy-Item -LiteralPath $source -Destination $program -Recurse
+}
 
 # State: tunnels\ holds private keys (SYSTEM and Administrators only); run\ holds the socket,
 # which the chosen user may open but not delete or replace.

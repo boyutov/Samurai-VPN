@@ -12,7 +12,7 @@ import static org.junit.jupiter.api.Assertions.*;
  * No window at all: a tunnel through the installed service, kept current by the agent running as
  * a separate process. Needs the installed tunnel service; CI only (.github/workflows/verify.yml).
  */
-@EnabledOnOs({OS.WINDOWS, OS.MAC})
+@EnabledOnOs({OS.LINUX, OS.WINDOWS, OS.MAC})
 @EnabledIfSystemProperty(named = "samurai.installed.test", matches = "true")
 class AgentInstalledTest {
     @TempDir Path folder;
@@ -72,6 +72,10 @@ class AgentInstalledTest {
         if (NativeTunnel.MAC) {
             Path plist = Path.of(System.getProperty("user.home"), "Library", "LaunchAgents", AgentProcess.LABEL + ".plist");
             return Files.exists(plist) ? Files.readString(plist) : "";
+        }
+        if (!NativeTunnel.WINDOWS) {
+            Path entry = Path.of(System.getProperty("user.home"), ".config", "autostart", "samurai-vpn-agent.desktop");
+            return Files.exists(entry) ? Files.readString(entry) : "";
         }
         var process = new ProcessBuilder("reg.exe", "query", "HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Run", "/v", "SamuraiVPNAgent")
                 .redirectErrorStream(true).start();

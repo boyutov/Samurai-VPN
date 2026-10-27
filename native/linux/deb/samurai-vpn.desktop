@@ -1,0 +1,7 @@
+[Desktop Entry]
+Type=Application
+Name=Samurai VPN
+Comment=Private networks of friends over WireGuard
+Exec=/opt/samurai-vpn/bin/SamuraiVPN
+Terminal=false
+Categories=Network;

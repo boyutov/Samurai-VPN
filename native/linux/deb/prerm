@@ -1,0 +1,19 @@
+#!/bin/sh
+# Debian package: stop the service; on removal also delete the tunnels Samurai created.
+set -e
+if [ -d /run/systemd/system ]; then
+    systemctl stop samurai-vpnd.service || true
+    [ "$1" = remove ] && systemctl disable samurai-vpnd.service || true
+fi
+if [ "$1" = remove ]; then
+    # Only WireGuard interfaces labelled samurai-vpn:UID:NETWORK by the service; others stay.
+    for device in /sys/class/net/sm*; do
+        [ -e "$device" ] || continue
+        name="${device##*/}"
+        alias="$(cat "$device/ifalias" 2>/dev/null || true)"
+        if grep -qx 'DEVTYPE=wireguard' "$device/uevent" 2>/dev/null && [ "${alias#samurai-vpn:}" != "$alias" ]; then
+            ip link delete dev "$name" || true
+        fi
+    done
+fi
+exit 0

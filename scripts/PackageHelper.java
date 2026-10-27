@@ -4,10 +4,10 @@ import java.util.List;
 
 class PackageHelper {
     public static void main(String[] args) throws Exception {
-        if (!System.getProperty("os.name").equals("Linux") || args.length != 0) throw new IllegalArgumentException("Linux packaging only");
+        if (!System.getProperty("os.name").equals("Linux") || args.length > 1) throw new IllegalArgumentException("Usage (Linux): package-helper.sh [destination]");
         Path jar = Path.of("vpn-linux/target/samurai-helper.jar");
         if (!Files.isRegularFile(jar)) throw new IllegalStateException("Run ./build.sh first");
-        Path destination = Path.of("dist/helper").toAbsolutePath();
+        Path destination = Path.of(args.length == 0 ? "dist/helper" : args[0]).toAbsolutePath();
         Files.createDirectories(destination.getParent()); Files.createDirectory(destination);
         Path jlink = Path.of(System.getProperty("java.home"), "bin/jlink");
         int result = new ProcessBuilder(List.of(jlink.toString(), "--add-modules", "java.base,java.sql,jdk.crypto.ec,jdk.unsupported,jdk.net",

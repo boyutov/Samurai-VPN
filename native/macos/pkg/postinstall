@@ -1,0 +1,4 @@
+#!/bin/bash
+# macOS package: root-owned tool copies and the launchd service, as native/macos/install-service.sh does.
+set -euo pipefail
+exec "/Library/Application Support/SamuraiVPN Setup/install-service.sh" /Applications/SamuraiVPN.app
