@@ -37,7 +37,7 @@ class MacSystemTest {
             assertTrue(device.matches("utun[0-9]+"), device);
             assertEquals(own.publicKey(), wg(device, "public-key").strip());
             assertTrue(runner.run(List.of(MacEngine.IFCONFIG, device), "").contains("inet 10.203.77.1"));
-            assertTrue(hasRoute("10.203.77.2", device), "member route on the tunnel");
+            assertTrue(hasRoute("10.203.77.2", device), () -> "member route on the tunnel:\n" + netstat());
             assertEquals("up", engine.execute(new TunnelProtocol.Request("status", id, null)).state(), "wireguard-go survives the starting shell");
 
             engine.execute(new TunnelProtocol.Request("endpoint", id, null, friend, "198.51.100.20:61000"));
@@ -62,9 +62,13 @@ class MacSystemTest {
         assertEquals("down", engine.execute(new TunnelProtocol.Request("status", id, null)).state());
     }
     private String wg(String device, String field) throws Exception { return runner.run(List.of(MacEngine.WG, "show", device, field), ""); }
-    private boolean hasRoute(String address, String device) throws Exception {
-        return runner.run(List.of(MacEngine.NETSTAT, "-rn", "-f", "inet"), "").lines()
-                .map(line -> line.strip().split("\\s+"))
-                .anyMatch(f -> f.length >= 4 && f[0].equals(address) && f[3].equals(device));
+    private String netstat() {
+        try { return runner.run(List.of(MacEngine.NETSTAT, "-rn", "-f", "inet"), ""); } catch (Exception e) { return e.toString(); }
+    }
+    private boolean hasRoute(String address, String device) {
+        // Same parsing as RouteGuard input: netstat may print a host route as "a.b.c.d" or "a.b.c.d/32".
+        return netstat().lines().map(line -> line.strip().split("\\s+"))
+                .filter(f -> f.length >= 4 && f[0].matches("[0-9./]+") && f[3].equals(device))
+                .anyMatch(f -> MacNetwork.prefix(f[0]).equals(address + "/32"));
     }
 }

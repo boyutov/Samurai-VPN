@@ -18,10 +18,29 @@ import static org.junit.jupiter.api.Assertions.*;
 @EnabledIfSystemProperty(named = "samurai.system.test", matches = "true")
 class WindowsSystemTest {
     @TempDir Path tunnels;
-    private final CommandRunner runner = new CommandRunner.SystemRunner(Duration.ofSeconds(20));
+    // Generous: routeQueryFinishesInTime measures the real budget separately.
+    private final CommandRunner runner = new CommandRunner.SystemRunner(Duration.ofSeconds(180));
     private final WireGuardKeys.Identity own = WireGuardKeys.generate();
     private final String friend = WireGuardKeys.generate().publicKey(), newcomer = WireGuardKeys.generate().publicKey();
 
+    @Test void routeQueryFinishesInTime() throws Exception {
+        // Diagnostic for the service's 20 s budget: the same script with the cleared and with the inherited environment.
+        long start = System.nanoTime();
+        var cleared = new CommandRunner.SystemRunner(Duration.ofSeconds(180)).result(powershell(), "");
+        long clearedMs = (System.nanoTime() - start) / 1_000_000;
+        start = System.nanoTime();
+        var inherited = new ProcessBuilder(powershell()).redirectErrorStream(true).start();
+        inherited.getOutputStream().close();
+        String output = new String(inherited.getInputStream().readAllBytes());
+        long inheritedMs = (System.nanoTime() - start) / 1_000_000;
+        System.out.println("ROUTES cleared env: " + clearedMs + " ms, exit " + cleared.exitCode() + ", stderr: " + cleared.errors().strip()
+                + "\nROUTES inherited env: " + inheritedMs + " ms, exit " + inherited.waitFor() + ", output " + output.length() + " chars");
+        assertEquals(0, cleared.exitCode(), cleared.errors());
+        assertTrue(clearedMs < 15_000, "route query took " + clearedMs + " ms");
+    }
+    private static List<String> powershell() {
+        return List.of(WindowsEngine.POWERSHELL, "-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-Command", WindowsEngine.ROUTES);
+    }
     @Test void tunnelServiceRoutesSyncAndCleanup() throws Exception {
         var engine = new WindowsEngine(runner, tunnels);
         String id = UUID.randomUUID().toString(), name = WindowsEngine.tunnelName(id);
@@ -53,7 +72,7 @@ class WindowsSystemTest {
     }
     private String wg(String name, String field) throws Exception { return runner.run(List.of(WindowsEngine.WG, "show", name, field), ""); }
     private boolean hasRoute(String destination, String name) throws Exception {
-        var routes = Json.MAPPER.readTree(runner.run(List.of(WindowsEngine.POWERSHELL, "-NoProfile", "-NonInteractive", "-Command", WindowsEngine.ROUTES), ""));
+        var routes = Json.MAPPER.readTree(new CommandRunner.SystemRunner(Duration.ofSeconds(180)).run(powershell(), ""));
         String prefix = destination.contains("/") ? destination : destination + "/32";
         for (var route : routes) if (route.path("dst").asText().equals(prefix) && route.path("dev").asText().equals(name)) return true;
         return false;
