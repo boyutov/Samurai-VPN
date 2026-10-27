@@ -50,14 +50,16 @@ jobs:
         run: |
           ./package.ps1 dist
           # Throwaway accounts: the service is installed for samuraiuser; samuraiother must be refused.
-          $password = 'Sv1!' + [guid]::NewGuid().ToString('N')
-          foreach ($name in 'samuraiuser', 'samuraiother') { & net.exe user $name $password /add | Out-Null; if ($LASTEXITCODE) { throw "net user $name failed" } }
+          # 14 characters: net user asks an interactive question for longer passwords.
+          $plain = 'Sv1!' + [guid]::NewGuid().ToString('N').Substring(0, 10)
+          $password = ConvertTo-SecureString $plain -AsPlainText -Force
+          foreach ($name in 'samuraiuser', 'samuraiother') { & net.exe user $name $plain /add | Out-Null; if ($LASTEXITCODE) { throw "net user $name failed" } }
           powershell -NoProfile -ExecutionPolicy Bypass -File native\windows\install-service.ps1 -Image dist\SamuraiVPN -User samuraiuser
           if ($LASTEXITCODE) { throw 'install-service.ps1 failed' }
           Copy-Item native\ci\socket-probe.ps1 C:\Users\Public\socket-probe.ps1
           $pwsh = (Get-Command pwsh).Source
           foreach ($name in 'samuraiuser', 'samuraiother') {
-              $credential = [pscredential]::new($name, (ConvertTo-SecureString $password -AsPlainText -Force))
+              $credential = [pscredential]::new($name, $password)
               $out = "C:\Users\Public\probe-$name.txt"
               Start-Process -FilePath $pwsh -Credential $credential -Wait -WorkingDirectory C:\Users\Public `
                   -ArgumentList '-NoProfile', '-File', 'C:\Users\Public\socket-probe.ps1', '-Out', $out

@@ -3,6 +3,7 @@ import java.util.*;
 
 /** Run from the project root using a JDK: java scripts/PackageApplication.java [destination]. */
 class PackageApplication {
+    static final String VERSION = "0.3.0";
     public static void main(String[] args) throws Exception {
         if (args.length > 1) throw new IllegalArgumentException("Usage: package.sh [destination directory]");
         Path jar = Path.of("vpn-desktop/target/samurai-desktop.jar").toAbsolutePath();
@@ -21,11 +22,13 @@ class PackageApplication {
             var command = new ArrayList<>(List.of(jpackage.toString(), "--type", "app-image",
                     "--input", input.toString(), "--dest", destination.toString(), "--name", "SamuraiVPN",
                     "--main-jar", jar.getFileName().toString(), "--main-class", "dev.samurai.vpn.desktop.DesktopMain",
-                    "--app-version", "0.3.0", "--vendor", "Samurai VPN",
+                    "--vendor", "Samurai VPN",
                     "--description", "Samurai VPN development preview",
                     // jdk.net: the macOS service reads the caller's UID (SO_PEERCRED) through it.
                     "--add-modules", "java.desktop,java.net.http,java.sql,jdk.httpserver,jdk.crypto.ec,jdk.localedata,jdk.unsupported,jdk.net",
                     "--java-options", "-Dfile.encoding=UTF-8"));
+            // macOS bundles require a first version number of at least 1; until 1.0 they keep jpackage's default.
+            if (!mac) command.addAll(List.of("--app-version", VERSION));
             Process process = new ProcessBuilder(command).inheritIO().start();
             int result = process.waitFor();
             if (result != 0) throw new IllegalStateException("jpackage failed with exit code " + result);
