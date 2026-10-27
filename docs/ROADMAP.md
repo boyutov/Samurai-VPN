@@ -9,7 +9,7 @@ The earlier conversational time estimates are not a delivery commitment.
 - [x] Scoped credentials, one-use invitations and bounded API.
 - [x] Local WireGuard identities and injection-resistant split-tunnel profiles.
 - [x] HTTP workflow and HTTPS certificate/hostname validation tests.
-- [x] CI definition for Windows, Linux and macOS (execution still required).
+- [x] CI on Windows, Linux and macOS, with real WireGuard tunnels on Windows and macOS.
 
 ## 0.2 — desktop preview
 
@@ -24,7 +24,7 @@ The earlier conversational time estimates are not a delivery commitment.
 - [x] Linux adapter lifecycle and route-conflict detection (namespace-tested).
 - [ ] Linux MTU detection; polkit flow on a real desktop.
 - [x] Windows tunnel service (WireGuard for Windows, SYSTEM scheduled task, AF_UNIX socket); unit-tested only.
-- [x] macOS tunnel service (wireguard-go + wg, launchd, LOCAL_PEERCRED); unit-tested only.
+- [x] macOS tunnel service (wireguard-go + wg, launchd, LOCAL_PEERCRED); engine tested in CI, not on a device.
 - [ ] Windows and macOS validation on real devices.
 - [x] Automated peer refresh (sync every 30 s with the desktop open and samurai-vpnd).
 - [ ] Peer refresh without the desktop window (service-side polling).
