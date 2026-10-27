@@ -43,7 +43,42 @@ jobs:
       # The runner is a throwaway administrator VM: the system test creates a real tunnel service.
       - name: Build and test on Windows with real WireGuard
         if: runner.os == 'Windows'
-        run: mvn -B -ntp verify "-Dsamurai.system.test=true"
+        run: mvn -B -ntp install "-Dsamurai.system.test=true"
+      - name: Install the service on Windows and check who may reach it
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          ./package.ps1 dist
+          # Throwaway accounts: the service is installed for samuraiuser; samuraiother must be refused.
+          $password = 'Sv1!' + [guid]::NewGuid().ToString('N')
+          foreach ($name in 'samuraiuser', 'samuraiother') { & net.exe user $name $password /add | Out-Null; if ($LASTEXITCODE) { throw "net user $name failed" } }
+          powershell -NoProfile -ExecutionPolicy Bypass -File native\windows\install-service.ps1 -Image dist\SamuraiVPN -User samuraiuser
+          if ($LASTEXITCODE) { throw 'install-service.ps1 failed' }
+          Copy-Item native\ci\socket-probe.ps1 C:\Users\Public\socket-probe.ps1
+          $pwsh = (Get-Command pwsh).Source
+          foreach ($name in 'samuraiuser', 'samuraiother') {
+              $credential = [pscredential]::new($name, (ConvertTo-SecureString $password -AsPlainText -Force))
+              $out = "C:\Users\Public\probe-$name.txt"
+              Start-Process -FilePath $pwsh -Credential $credential -Wait -WorkingDirectory C:\Users\Public `
+                  -ArgumentList '-NoProfile', '-File', 'C:\Users\Public\socket-probe.ps1', '-Out', $out
+              "${name}: $(Get-Content -Raw $out)"
+          }
+          if ((Get-Content -Raw C:\Users\Public\probe-samuraiuser.txt) -notmatch '^connected .*"success":true') { throw 'the installed user cannot use the service' }
+          if ((Get-Content -Raw C:\Users\Public\probe-samuraiother.txt) -notmatch '^denied ') { throw 'another account reached the service' }
+      - name: Tunnel through the installed service on Windows, then uninstall
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          mvn -B -ntp -o -pl vpn-windows test "-Dsamurai.installed.test=true" "-Dtest=InstalledServiceTest" "-Dsurefire.failIfNoSpecifiedTests=false"
+          if ($LASTEXITCODE) { throw 'InstalledServiceTest failed' }
+          if (-not (Get-Service 'WireGuardTunnel$samurai*' -ErrorAction SilentlyContinue)) { throw 'expected a tunnel left for the uninstaller' }
+          powershell -NoProfile -ExecutionPolicy Bypass -File native\windows\uninstall-service.ps1
+          if ($LASTEXITCODE) { throw 'uninstall-service.ps1 failed' }
+          Start-Sleep -Seconds 5
+          if (Get-ScheduledTask -TaskName 'Samurai VPN Service' -ErrorAction SilentlyContinue) { throw 'scheduled task left behind' }
+          if (Get-Service 'WireGuardTunnel$samurai*' -ErrorAction SilentlyContinue) { throw 'tunnel left behind' }
+          foreach ($path in 'C:\ProgramData\SamuraiVPN', 'C:\Program Files\SamuraiVPN') { if (Test-Path -LiteralPath $path) { throw "$path left behind" } }
+          if (-not (Test-Path 'C:\Program Files\WireGuard\wireguard.exe')) { throw 'WireGuard itself must stay' }
 
       - name: Install wireguard-go on macOS
         if: runner.os == 'macOS'
@@ -66,3 +101,30 @@ jobs:
         run: >-
           sudo -E env "PATH=$PATH" mvn -B -ntp -o "-Duser.home=$HOME" -pl vpn-macos test
           -Dsamurai.system.test=true -Dtest=MacSystemTest -Dsurefire.failIfNoSpecifiedTests=false
+          && sudo chown -R "$(id -u)" . "$HOME/.m2"
+      - name: Install the service on macOS and use it as ordinary users
+        if: runner.os == 'macOS'
+        run: |
+          ./package.sh dist
+          sudo native/macos/install-service.sh dist/SamuraiVPN.app
+          # Throwaway second account; its requests must never reach the runner's tunnel.
+          sudo sysadminctl -addUser samuraiother -password "$(uuidgen)"
+          id samuraiother
+          mvn -B -ntp -o -pl vpn-macos test -Dsamurai.installed.test=true -Dsamurai.other.user=samuraiother \
+              -Dtest=MacInstalledServiceTest -Dsurefire.failIfNoSpecifiedTests=false
+      - name: Check launchd restarts the service, then uninstall on macOS
+        if: runner.os == 'macOS'
+        run: |
+          java="/Library/Application Support/SamuraiVPN/runtime/bin/java" jar="/Library/Application Support/SamuraiVPN/app/samurai-desktop.jar"
+          status() { "$java" -cp "$jar" dev.samurai.vpn.macos.MacClient status "$(uuidgen | tr 'A-Z' 'a-z')"; }
+          status
+          sudo pkill -f dev.samurai.vpn.macos.MacServiceMain
+          for _ in $(seq 40); do sleep 1; status 2>/dev/null && break; done
+          status
+          ifconfig | grep -q 'inet 10.203.79.1' || { echo 'expected a tunnel left for the uninstaller'; exit 1; }
+          sudo native/macos/uninstall-service.sh
+          for _ in $(seq 20); do ifconfig | grep -q 'inet 10.203.79.1' || break; sleep 0.5; done
+          if ifconfig | grep -q 'inet 10.203.79.1'; then echo 'tunnel left behind'; exit 1; fi
+          for path in /Library/LaunchDaemons/dev.samurai.vpn.service.plist "/Library/Application Support/SamuraiVPN" /var/run/samurai-vpnd; do
+              [[ ! -e "$path" ]] || { echo "$path left behind"; exit 1; }
+          done
