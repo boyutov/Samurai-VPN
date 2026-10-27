@@ -120,10 +120,11 @@ jobs:
           java="/Library/Application Support/SamuraiVPN/runtime/bin/java" jar="/Library/Application Support/SamuraiVPN/app/samurai-desktop.jar"
           status() { "$java" -cp "$jar" dev.samurai.vpn.macos.MacClient status "$(uuidgen | tr 'A-Z' 'a-z')"; }
           status
+          ifconfig | grep -q 'inet 10.203.79.1' || { echo 'expected a tunnel left by MacInstalledServiceTest'; exit 1; }
           sudo pkill -f dev.samurai.vpn.macos.MacServiceMain
           for _ in $(seq 40); do sleep 1; status 2>/dev/null && break; done
           status
-          ifconfig | grep -q 'inet 10.203.79.1' || { echo 'expected a tunnel left for the uninstaller'; exit 1; }
+          ifconfig | grep -q 'inet 10.203.79.1' || { echo 'tunnel did not survive the service restart'; exit 1; }
           sudo native/macos/uninstall-service.sh
           for _ in $(seq 20); do ifconfig | grep -q 'inet 10.203.79.1' || break; sleep 0.5; done
           if ifconfig | grep -q 'inet 10.203.79.1'; then echo 'tunnel left behind'; exit 1; fi

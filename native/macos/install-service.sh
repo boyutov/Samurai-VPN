@@ -47,6 +47,8 @@ cat > "$plist" <<PLIST
   </array>
   <key>RunAtLoad</key><true/>
   <key>KeepAlive</key><true/>
+  <!-- wireguard-go runs in the service's process group: tunnels outlive a service restart, as on Linux. -->
+  <key>AbandonProcessGroup</key><true/>
   <key>StandardErrorPath</key><string>/var/log/samurai-vpn.log</string>
 </dict></plist>
 PLIST
