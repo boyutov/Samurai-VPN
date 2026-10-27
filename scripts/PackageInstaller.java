@@ -131,7 +131,11 @@ class PackageInstaller {
     private static void delete(Path root) throws IOException {
         if (!Files.exists(root)) return;
         try (var paths = Files.walk(root)) {
-            for (Path path : paths.sorted(Comparator.reverseOrder()).toList()) Files.delete(path);
+            for (Path path : paths.sorted(Comparator.reverseOrder()).toList()) {
+                // jpackage marks the Windows launcher read-only, which blocks deletion there.
+                if (Files.getFileStore(path).supportsFileAttributeView("dos")) Files.setAttribute(path, "dos:readonly", false, LinkOption.NOFOLLOW_LINKS);
+                Files.delete(path);
+            }
         }
     }
 }
