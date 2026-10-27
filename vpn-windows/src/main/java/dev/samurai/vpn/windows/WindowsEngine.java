@@ -19,10 +19,13 @@ public final class WindowsEngine {
     static final String WIREGUARD = WIREGUARD_DIR + "wireguard.exe", WG = WIREGUARD_DIR + "wg.exe";
     static final String SC = SYSTEM32 + "sc.exe", NETSH = SYSTEM32 + "netsh.exe",
             POWERSHELL = SYSTEM32 + "WindowsPowerShell\\v1.0\\powershell.exe";
-    // Fixed scripts in the same JSON shape as "ip -j", so RouteGuard checks both systems alike.
-    static final String ROUTES = "[Console]::OutputEncoding = [Text.Encoding]::UTF8; ConvertTo-Json -Compress -Depth 4 -InputObject "
+    // Fixed scripts in the same JSON shape as "ip -j", so RouteGuard checks both systems alike. Module
+    // autoloading is off: without a module analysis cache (the service's clean environment) it scans every
+    // installed module first, 35-50 s on a CI runner instead of under one second.
+    static final String MODULES = "$PSModuleAutoLoadingPreference = 'None'; Import-Module Microsoft.PowerShell.Utility, NetTCPIP -ErrorAction Stop; ";
+    static final String ROUTES = MODULES + "[Console]::OutputEncoding = [Text.Encoding]::UTF8; ConvertTo-Json -Compress -Depth 4 -InputObject "
             + "@(Get-NetRoute -AddressFamily IPv4 -ErrorAction Stop | ForEach-Object { [pscustomobject]@{ dst = $_.DestinationPrefix; dev = $_.InterfaceAlias } })";
-    static final String ADDRESSES = "[Console]::OutputEncoding = [Text.Encoding]::UTF8; ConvertTo-Json -Compress -Depth 4 -InputObject "
+    static final String ADDRESSES = MODULES + "[Console]::OutputEncoding = [Text.Encoding]::UTF8; ConvertTo-Json -Compress -Depth 4 -InputObject "
             + "@(Get-NetIPAddress -AddressFamily IPv4 -ErrorAction Stop | ForEach-Object { [pscustomobject]@{ ifname = $_.InterfaceAlias; "
             + "addr_info = @([pscustomobject]@{ family = 'inet'; local = $_.IPAddress; prefixlen = [int]$_.PrefixLength }) } })";
     private final CommandRunner runner;
@@ -64,12 +67,14 @@ public final class WindowsEngine {
         Files.writeString(file, nativeConfig(config), StandardOpenOption.CREATE_NEW, StandardOpenOption.WRITE);
         try {
             runner.run(List.of(WIREGUARD, "/installtunnelservice", file.toString()), "");
+            // The tunnel service creates the interface after the command returns.
+            await(() -> { runner.run(List.of(WG, "show", name, "public-key"), ""); return true; }, "Tunnel service did not start");
             var state = status(id);
             if (!state.state().equals("up")) throw new IOException("Tunnel service did not start");
             return state;
         } catch (Exception failure) {
             try {
-                if (serviceExists(name)) runner.run(List.of(WIREGUARD, "/uninstalltunnelservice", name), "");
+                if (serviceExists(name)) uninstall(name);
                 Files.deleteIfExists(file);
             } catch (Exception cleanup) {
                 var failureWithCleanup = new IOException("Tunnel setup failed; cleanup could not be confirmed for " + name, failure);
@@ -80,7 +85,7 @@ public final class WindowsEngine {
     }
     private TunnelProtocol.Status down(String id) throws Exception {
         String name = tunnelName(id);
-        if (owned(name) && serviceExists(name)) runner.run(List.of(WIREGUARD, "/uninstalltunnelservice", name), "");
+        if (owned(name) && serviceExists(name)) uninstall(name);
         Files.deleteIfExists(configuration(name));
         return new TunnelProtocol.Status("down", name, 0, 0, 0);
     }
@@ -162,6 +167,19 @@ public final class WindowsEngine {
         String name = tunnelName(id);
         if (!owned(name) || !serviceExists(name)) throw new IOException("Refusing to change an interface that is not connected");
         return name;
+    }
+    /** Removal is asynchronous too; the configuration (our ownership marker) is deleted only once the service is gone. */
+    private void uninstall(String name) throws Exception {
+        runner.run(List.of(WIREGUARD, "/uninstalltunnelservice", name), "");
+        await(() -> !serviceExists(name), "Tunnel service was not removed");
+    }
+    private interface Check { boolean done() throws Exception; }
+    private static void await(Check check, String failure) throws Exception {
+        for (int attempt = 0; attempt < 40; attempt++) {
+            try { if (check.done()) return; } catch (Exception notYet) { /* retried */ }
+            Thread.sleep(250);
+        }
+        throw new IOException(failure);
     }
     private boolean serviceExists(String name) {
         // sc query fails for a missing service; any other failure also counts as "not there" for status,
