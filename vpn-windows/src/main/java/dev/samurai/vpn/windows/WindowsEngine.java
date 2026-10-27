@@ -175,7 +175,8 @@ public final class WindowsEngine {
     }
     private interface Check { boolean done() throws Exception; }
     private static void await(Check check, String failure) throws Exception {
-        for (int attempt = 0; attempt < 40; attempt++) {
+        // Up to 20 s: a CI runner once needed more than 10 s; the service's request deadline is 30 s.
+        for (int attempt = 0; attempt < 80; attempt++) {
             try { if (check.done()) return; } catch (Exception notYet) { /* retried */ }
             Thread.sleep(250);
         }

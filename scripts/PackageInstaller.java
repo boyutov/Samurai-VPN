@@ -133,7 +133,7 @@ class PackageInstaller {
         try (var paths = Files.walk(root)) {
             for (Path path : paths.sorted(Comparator.reverseOrder()).toList()) {
                 // jpackage marks the Windows launcher read-only, which blocks deletion there.
-                if (Files.getFileStore(path).supportsFileAttributeView("dos")) Files.setAttribute(path, "dos:readonly", false, LinkOption.NOFOLLOW_LINKS);
+                if (System.getProperty("os.name").startsWith("Windows") && !Files.isSymbolicLink(path)) Files.setAttribute(path, "dos:readonly", false);
                 Files.delete(path);
             }
         }
