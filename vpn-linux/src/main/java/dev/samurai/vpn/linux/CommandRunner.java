@@ -14,6 +14,11 @@ public interface CommandRunner {
     final class SystemRunner implements CommandRunner {
         public record Result(int exitCode, String output, String errors) {}
         private static final boolean WINDOWS = System.getProperty("os.name").startsWith("Windows");
+        // System locations only, taken from the service's own (SYSTEM) environment: without them PowerShell
+        // rebuilds its module cache on every start (35 s instead of 1 s on a CI runner). Never PSModulePath or PATH.
+        private static final List<String> WINDOWS_ENVIRONMENT = List.of("SystemRoot", "windir", "SystemDrive", "ComSpec", "PATHEXT",
+                "ProgramFiles", "ProgramFiles(x86)", "ProgramW6432", "CommonProgramFiles", "CommonProgramW6432", "ProgramData", "ALLUSERSPROFILE",
+                "USERPROFILE", "LOCALAPPDATA", "APPDATA", "TEMP", "TMP", "PROCESSOR_ARCHITECTURE", "NUMBER_OF_PROCESSORS", "OS", "COMPUTERNAME");
         private final Duration timeout;
         public SystemRunner(Duration timeout) { this.timeout = timeout; }
         public String run(List<String> command, String input) throws Exception {
@@ -26,6 +31,7 @@ public interface CommandRunner {
             String systemRoot = System.getenv("SystemRoot");
             builder.environment().clear();
             if (WINDOWS) {
+                for (String name : WINDOWS_ENVIRONMENT) if (System.getenv(name) != null) builder.environment().put(name, System.getenv(name));
                 // Windows programs fail to start without SystemRoot; commands are always absolute paths.
                 builder.environment().put("SystemRoot", systemRoot == null ? "C:\\Windows" : systemRoot);
                 builder.environment().put("PATH", (systemRoot == null ? "C:\\Windows" : systemRoot) + "\\System32");

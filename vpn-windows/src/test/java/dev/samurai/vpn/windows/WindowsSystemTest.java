@@ -18,8 +18,13 @@ import static org.junit.jupiter.api.Assertions.*;
 @EnabledIfSystemProperty(named = "samurai.system.test", matches = "true")
 class WindowsSystemTest {
     @TempDir Path tunnels;
-    // Generous: routeQueryFinishesInTime measures the real budget separately.
-    private final CommandRunner runner = new CommandRunner.SystemRunner(Duration.ofSeconds(180));
+    // The service's budget. Failures name the command and its stderr: keys only ever travel on stdin.
+    private final CommandRunner runner = (command, input) -> {
+        var result = new CommandRunner.SystemRunner(Duration.ofSeconds(20)).result(command, input);
+        if (result.exitCode() != 0) throw new java.io.IOException(String.join(" ", command.subList(0, Math.min(3, command.size())))
+                + " exit " + result.exitCode() + ": " + result.errors().strip() + " " + result.output().strip());
+        return result.output();
+    };
     private final WireGuardKeys.Identity own = WireGuardKeys.generate();
     private final String friend = WireGuardKeys.generate().publicKey(), newcomer = WireGuardKeys.generate().publicKey();
 
@@ -36,7 +41,7 @@ class WindowsSystemTest {
         System.out.println("ROUTES cleared env: " + clearedMs + " ms, exit " + cleared.exitCode() + ", stderr: " + cleared.errors().strip()
                 + "\nROUTES inherited env: " + inheritedMs + " ms, exit " + inherited.waitFor() + ", output " + output.length() + " chars");
         assertEquals(0, cleared.exitCode(), cleared.errors());
-        assertTrue(clearedMs < 15_000, "route query took " + clearedMs + " ms");
+        assertTrue(clearedMs < 10_000, "route query took " + clearedMs + " ms");
     }
     private static List<String> powershell() {
         return List.of(WindowsEngine.POWERSHELL, "-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-Command", WindowsEngine.ROUTES);
@@ -63,9 +68,12 @@ class WindowsSystemTest {
             assertTrue(hasRoute("10.203.77.3", name));
             assertFalse(hasRoute("10.203.77.2", name), "route of a removed member is gone");
             assertTrue(Files.readString(tunnels.resolve(name + ".conf")).contains(newcomer), "config follows sync for the next service start");
-        } finally {
-            assertEquals("down", engine.execute(new TunnelProtocol.Request("down", id, null)).state());
+        } catch (Throwable failure) {
+            // Keep the first failure visible; cleanup problems are attached to it.
+            try { engine.execute(new TunnelProtocol.Request("down", id, null)); } catch (Exception cleanup) { failure.addSuppressed(cleanup); }
+            throw failure;
         }
+        assertEquals("down", engine.execute(new TunnelProtocol.Request("down", id, null)).state());
         assertEquals("down", engine.execute(new TunnelProtocol.Request("status", id, null)).state());
         assertThrows(Exception.class, () -> runner.run(List.of(WindowsEngine.SC, "query", "WireGuardTunnel$" + name), ""), "service removed");
         assertFalse(Files.exists(tunnels.resolve(name + ".conf")));
