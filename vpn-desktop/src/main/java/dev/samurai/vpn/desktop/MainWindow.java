@@ -40,8 +40,9 @@ public final class MainWindow extends JFrame {
     private DesktopService.Profile profile;
     private List<Api.Peer> members = List.of();
     private java.util.Map<String, PathManager.Path> paths = java.util.Map.of();
-    private ScheduledExecutorService pathAgent;
-    private Runnable pathRestore;
+    private final AgentFiles agentFiles;
+    private javax.swing.Timer agentView;
+    private long shownChange;
     private LocalDemo demo;
     private boolean busy, closing;
     private Path invitationFile;
@@ -49,7 +50,7 @@ public final class MainWindow extends JFrame {
     private JTextField invitationPath, invitationServer;
 
     public MainWindow(Path data, boolean dev) {
-        super("Samurai VPN — сети друзей"); this.data = data;
+        super("Samurai VPN — сети друзей"); this.data = data; this.agentFiles = new AgentFiles(data);
         setDefaultCloseOperation(DO_NOTHING_ON_CLOSE); setMinimumSize(new Dimension(1060, 760));
         setSize(1160, 820); setLocationRelativeTo(null);
         JPanel root = new JPanel(new BorderLayout()); root.setBackground(Theme.BG); setContentPane(root);
@@ -203,7 +204,7 @@ public final class MainWindow extends JFrame {
         task("Открываем профиль…", () -> service.open(file, dev), opened -> { select(opened); refresh(); });
     }
     private void select(DesktopService.Profile selected) {
-        if (selected != profile) stopPathAgent();
+        if (selected != profile) stopAgentView();
         profile = selected; members = List.of(); rows.setRowCount(0); count.setText("—");
         address.setText(selected.session().membership().address()); access.setText(selected.owner() ? "Владелец" : "Участник");
         network.setText(selected.session().server() + " / " + selected.session().membership().networkId().substring(0, 8));
@@ -237,68 +238,52 @@ public final class MainWindow extends JFrame {
         }
         if (selectedRow >= 0 && selectedRow < rows.getRowCount()) peers.setRowSelectionInterval(selectedRow, selectedRow);
     }
-    /** Keeps relayed peers on a direct path when NATs allow it; needs the resident tunnel service. */
-    private void startPathAgent() {
-        if (pathAgent != null || profile == null || !NativeTunnel.resident()) return;
+    /**
+     * A connected tunnel is kept current by the background agent (BackgroundAgent), also after
+     * this window closes; the window registers the profile, starts the agent and shows its state.
+     */
+    private void startAgent() {
+        if (agentView != null || profile == null || !NativeTunnel.resident()) return;
         var selected = profile; boolean dev = devMode.isSelected();
-        String id = selected.session().membership().networkId(), self = selected.session().membership().peerId();
-        var client = NativeTunnel.client();
-        var manager = new PathManager(new PathManager.Tunnel() {
-            public TunnelProtocol.Status status() throws Exception { return client.execute(new TunnelProtocol.Request("status", id, null)); }
-            public void endpoint(String key, String endpoint) throws Exception { client.execute(new TunnelProtocol.Request("endpoint", id, null, key, endpoint)); }
-            public void poke(String address) throws Exception {
-                // Discard port: the content is irrelevant, the encrypted WireGuard packet opens the NAT.
-                try (var socket = new java.net.DatagramSocket()) {
-                    socket.send(new java.net.DatagramPacket(new byte[1], 1, java.net.InetAddress.getByName(address), 9));
-                }
+        if (demo != null && selected.directory().equals(demo.profile().directory())) return;
+        Thread.ofVirtual().start(() -> {
+            try {
+                agentFiles.update(selected, dev, true);
+                AgentProcess.autostart(data, true);
+                AgentProcess.ensureRunning(data);
+            } catch (Exception e) {
+                SwingUtilities.invokeLater(() -> updated.setText("Фоновый агент не запущен: прямые соединения и обновление состава недоступны"));
             }
         });
-        var agent = Executors.newSingleThreadScheduledExecutor(r -> Thread.ofPlatform().daemon().name("samurai-paths").unstarted(r));
-        long[] fetched = {0};
-        List<List<Api.Peer>> cache = new ArrayList<>(List.of(List.of()));
-        agent.scheduleWithFixedDelay(() -> {
-            long now = java.time.Instant.now().getEpochSecond();
-            try {
-                // Membership and candidates change rarely; the tunnel itself is polled every 5 s.
-                if (now - fetched[0] >= 30) {
-                    var everyone = service.refresh(selected, dev).peers(); fetched[0] = now;
-                    var others = everyone.stream().filter(p -> !p.peerId().equals(self)).toList();
-                    cache.set(0, others);
-                    boolean changed = syncMembers(client, selected, others);
-                    SwingUtilities.invokeLater(() -> {
-                        if (pathAgent != agent) return;
-                        members = List.copyOf(everyone); count.setText(Integer.toString(members.size())); renderRows();
-                        if (changed) status.setText("Состав сети изменился: туннель обновлён без переподключения");
-                    });
-                }
-                var result = manager.tick(cache.getFirst(), now);
-                SwingUtilities.invokeLater(() -> { if (pathAgent == agent) { paths = java.util.Map.copyOf(result); renderRows(); } });
-            } catch (Exception e) {
-                SwingUtilities.invokeLater(() -> { if (pathAgent == agent) updated.setText("Проверка прямых соединений не удалась, повторим через 5 с"); });
-            }
-        }, 0, 5, TimeUnit.SECONDS);
-        pathAgent = agent;
-        pathRestore = () -> { try { manager.restoreRelay(cache.getFirst()); } catch (Exception ignored) { /* tunnel already down */ } };
+        shownChange = -1;
+        agentView = new javax.swing.Timer(5000, event -> showAgent(selected));
+        agentView.setInitialDelay(1500); agentView.start();
     }
-    /** Applies added and revoked members to the running tunnel; returns whether anything changed. */
-    private static boolean syncMembers(TunnelBackend client, DesktopService.Profile selected, List<Api.Peer> others) throws Exception {
-        String id = selected.session().membership().networkId();
-        var running = new java.util.HashSet<String>();
-        for (var state : client.execute(new TunnelProtocol.Request("status", id, null)).peers()) running.add(state.publicKey());
-        var wanted = new java.util.HashSet<String>();
-        for (var peer : others) wanted.add(peer.publicKey());
-        if (running.equals(wanted)) return false;
-        // The listen port is not changed by sync; any valid value satisfies validation.
-        client.execute(new TunnelProtocol.Request("sync", id, new TunnelProtocol.Configuration(
-                selected.session().membership().address(), 51820, selected.session().identity(), others)));
-        return true;
+    private void showAgent(DesktopService.Profile selected) {
+        if (profile != selected || agentView == null) return;
+        AgentFiles.Network state;
+        try { state = agentFiles.network(selected).orElse(null); } catch (Exception e) { state = null; }
+        if (state == null) { updated.setText("Ожидаем фоновый агент…"); return; }
+        if (!state.error().isEmpty()) { updated.setText("Фоновый агент не получил данные, повторит через 5 с"); return; }
+        if (!state.peers().isEmpty()) { members = List.copyOf(state.peers()); count.setText(Integer.toString(members.size())); }
+        var current = new java.util.HashMap<String, PathManager.Path>();
+        state.paths().forEach((key, path) -> { try { current.put(key, PathManager.Path.valueOf(path)); } catch (IllegalArgumentException ignored) {} });
+        paths = java.util.Map.copyOf(current); renderRows();
+        if (shownChange >= 0 && state.membershipChanged() > shownChange) status.setText("Состав сети изменился: туннель обновлён без переподключения");
+        shownChange = state.membershipChanged();
+        updated.setText("Фоновый агент: обновлено в " + LocalTime.now().format(DateTimeFormatter.ofPattern("HH:mm:ss")));
     }
-    /** Stops the agent after it returns direct peers to the relay; periodic ticks are cancelled by shutdown. */
-    private ScheduledExecutorService stopPathAgent() {
-        var agent = pathAgent;
-        if (agent != null) { agent.execute(pathRestore); agent.shutdown(); pathAgent = null; pathRestore = null; }
+    private void stopAgentView() {
+        if (agentView != null) { agentView.stop(); agentView = null; }
         paths = java.util.Map.of();
-        return agent;
+    }
+    /** The tunnel is down: the agent no longer serves this profile, and nothing starts at login once none is left. */
+    private void releaseAgent(DesktopService.Profile selected) {
+        stopAgentView();
+        Thread.ofVirtual().start(() -> {
+            try { if (agentFiles.update(selected, false, false) == 0) AgentProcess.autostart(data, false); }
+            catch (Exception e) { SwingUtilities.invokeLater(() -> updated.setText("Не удалось обновить список фонового агента")); }
+        });
     }
     private void invite() {
         Path output = choose(true, false, "Сохранить приглашение", "samurai-invite-" + shortId() + ".json");
@@ -318,13 +303,13 @@ public final class MainWindow extends JFrame {
     }
     private void revoke() {
         int row = peers.getSelectedRow(); if (row < 0) return; var peer = members.get(row);
-        JTextArea text = Theme.paragraph("Удалить устройство «" + peer.name() + "»?\n\nRelay сразу перестанет пересылать его трафик. Прямой доступ закроется, когда остальные устройства обновят туннель (автоматически при открытом приложении и запущенной " + NativeTunnel.serviceName() + ").");
+        JTextArea text = Theme.paragraph("Удалить устройство «" + peer.name() + "»?\n\nRelay сразу перестанет пересылать его трафик. Прямой доступ закроется, когда остальные устройства обновят туннель (автоматически, пока их туннель подключён через " + NativeTunnel.serviceName() + ").");
         text.setPreferredSize(new Dimension(450, 120));
         if (JOptionPane.showConfirmDialog(this, text, "Удаление участника", JOptionPane.OK_CANCEL_OPTION) != JOptionPane.OK_OPTION) return;
         var selected = profile; boolean dev = devMode.isSelected();
         task("Удаляем участника…", () -> { service.revoke(selected, dev, peer.peerId()); return true; }, ignored -> {
             notice.setText(NativeTunnel.resident()
-                    ? "Участник удалён. Открытые приложения Samurai VPN с подключённым туннелем уберут его ключ примерно за 30 секунд. Устройства без " + NativeTunnel.serviceName() + " или с закрытым окном нужно переподключить."
+                    ? "Участник удалён. Устройства с подключённым туннелем уберут его ключ примерно за 30 секунд, даже с закрытым окном. Устройства без " + NativeTunnel.serviceName() + " нужно переподключить."
                     : "Участник удалён из сервера. Переподключите туннель или примените новые профили WireGuard на остальных устройствах, чтобы закрыть ему доступ."); refresh();
         });
     }
@@ -344,6 +329,8 @@ public final class MainWindow extends JFrame {
                     + (NativeTunnel.WINDOWS ? "\n\nТуннель включит служба Samurai VPN через WireGuard for Windows."
                             : NativeTunnel.MAC ? "\n\nТуннель включит служба Samurai VPN через wireguard-go." : "\n\nПотребуется системное подтверждение администратора.")
                     + " DNS и основной маршрут интернета не меняются."
+                    + (NativeTunnel.resident() ? "\n\nПосле закрытия окна туннель обслуживает фоновый агент Samurai VPN (без прав администратора):"
+                            + " он обновляет состав сети и прямые соединения и запускается при входе в систему, пока туннель не отключён." : "")
                     + "\nДоступность UDP-портов и firewall нужно настроить отдельно.");
             JScrollPane scroll = new JScrollPane(summary); scroll.setPreferredSize(new Dimension(500, 300));
             if (JOptionPane.showConfirmDialog(this, scroll, "Применить этот план?", JOptionPane.OK_CANCEL_OPTION) == JOptionPane.OK_OPTION)
@@ -362,7 +349,7 @@ public final class MainWindow extends JFrame {
         boolean up = state.state().equals("up");
         tunnelTitle.setText(up ? "ИНТЕРФЕЙС WIREGUARD ВКЛЮЧЕН" : "ИНТЕРФЕЙС WIREGUARD ОТКЛЮЧЕН");
         tunnelTitle.setForeground(up ? Theme.ACCENT : Theme.WARN);
-        if (up) startPathAgent(); else { stopPathAgent(); renderRows(); }
+        if (up) startAgent(); else { releaseAgent(profile); renderRows(); }
         String handshake = state.latestHandshake() == 0 ? "Обмена ключами с участниками пока не было."
                 : "Последний обмен ключами: " + java.time.Instant.ofEpochSecond(state.latestHandshake()).atZone(java.time.ZoneId.systemDefault())
                     .format(DateTimeFormatter.ofPattern("HH:mm:ss")) + ". Это не проверка доступности игры.";
@@ -442,8 +429,7 @@ public final class MainWindow extends JFrame {
     }
     void closeWindow() { closing = true; updateActions(); status.setText("Завершаем текущую операцию…"); if (!busy) finishClose(); }
     private void finishClose() {
-        var agent = stopPathAgent();
-        if (agent != null) try { agent.awaitTermination(3, TimeUnit.SECONDS); } catch (InterruptedException e) { Thread.currentThread().interrupt(); }
+        stopAgentView(); // the background agent keeps running for connected tunnels
         if (demo != null) { demo.close(); demo = null; } dispose(); }
     boolean isBusy() { return busy; }
     JTable peerTable() { return peers; }

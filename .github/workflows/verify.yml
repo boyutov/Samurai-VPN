@@ -73,6 +73,9 @@ jobs:
         run: |
           mvn -B -ntp -o -pl vpn-windows test "-Dsamurai.installed.test=true" "-Dtest=InstalledServiceTest" "-Dsurefire.failIfNoSpecifiedTests=false"
           if ($LASTEXITCODE) { throw 'InstalledServiceTest failed' }
+          # No window: the background agent, a separate process, follows membership changes.
+          mvn -B -ntp -o -pl vpn-desktop test "-Dsamurai.installed.test=true" "-Dtest=AgentInstalledTest" "-Dsurefire.failIfNoSpecifiedTests=false"
+          if ($LASTEXITCODE) { throw 'AgentInstalledTest failed' }
           if (-not (Get-Service 'WireGuardTunnel$samurai*' -ErrorAction SilentlyContinue)) { throw 'expected a tunnel left for the uninstaller' }
           powershell -NoProfile -ExecutionPolicy Bypass -File native\windows\uninstall-service.ps1
           if ($LASTEXITCODE) { throw 'uninstall-service.ps1 failed' }
@@ -114,6 +117,8 @@ jobs:
           id samuraiother
           mvn -B -ntp -o -pl vpn-macos test -Dsamurai.installed.test=true -Dsamurai.other.user=samuraiother \
               -Dtest=MacInstalledServiceTest -Dsurefire.failIfNoSpecifiedTests=false
+          # No window: the background agent, a separate process, follows membership changes.
+          mvn -B -ntp -o -pl vpn-desktop test -Dsamurai.installed.test=true -Dtest=AgentInstalledTest -Dsurefire.failIfNoSpecifiedTests=false
       - name: Check launchd restarts the service, then uninstall on macOS
         if: runner.os == 'macOS'
         run: |

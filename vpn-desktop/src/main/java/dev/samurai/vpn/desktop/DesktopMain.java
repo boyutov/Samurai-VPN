@@ -9,14 +9,19 @@ import javax.swing.*;
 public final class DesktopMain {
     public static void main(String[] args) {
         try {
-            var options = new Arguments(args, 0, Set.of("--help", "--dev", "--demo", "--self-test"), Set.of("--data-dir"));
+            var options = new Arguments(args, 0, Set.of("--help", "--dev", "--demo", "--self-test", "--agent"), Set.of("--data-dir"));
             if (options.has("--help")) {
-                System.out.println("Samurai VPN desktop 0.3\n--demo: local two-device demonstration\n--dev: allow loopback HTTP\n--data-dir PATH: profile directory (default: ~/.samurai-vpn)\n--self-test: verify this runtime using temporary local demo files");
+                System.out.println("Samurai VPN desktop 0.3\n--demo: local two-device demonstration\n--dev: allow loopback HTTP\n--data-dir PATH: profile directory (default: ~/.samurai-vpn)\n--self-test: verify this runtime using temporary local demo files\n--agent: background agent for connected networks (started by the window)");
                 return;
             }
             if (options.has("--self-test")) { selfTest(); return; }
-            if (GraphicsEnvironment.isHeadless()) throw new IllegalStateException("A graphical desktop is required.");
             Path data = Path.of(options.get("--data-dir", Path.of(System.getProperty("user.home"), ".samurai-vpn").toString())).toAbsolutePath();
+            if (options.has("--agent")) {
+                // No window, no Dock icon: the agent never touches AWT.
+                System.setProperty("java.awt.headless", "true");
+                System.exit(BackgroundAgent.run(data));
+            }
+            if (GraphicsEnvironment.isHeadless()) throw new IllegalStateException("A graphical desktop is required.");
             Theme.install();
             SwingUtilities.invokeLater(() -> {
                 var window = new MainWindow(data, options.has("--dev")); window.setVisible(true);
