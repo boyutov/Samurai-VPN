@@ -101,9 +101,11 @@ final class AgentProcess {
         // The value travels in an environment variable, never inside the script text.
         String script = "$ErrorActionPreference = 'Stop'; try { $key = 'HKCU:\\Software\\Microsoft\\Windows\\CurrentVersion\\Run'; "
                 // A silently ignored error still makes -Command exit with 1, so absence is checked first.
-                + (value == null ? "if (Get-ItemProperty -Path $key -Name 'SamuraiVPNAgent' -ErrorAction SilentlyContinue) "
+                // A new account may not have the Run key yet.
+                + (value == null ? "if ((Test-Path $key) -and (Get-ItemProperty -Path $key -Name 'SamuraiVPNAgent' -ErrorAction SilentlyContinue)) "
                         + "{ Remove-ItemProperty -Path $key -Name 'SamuraiVPNAgent' }"
-                        : "Set-ItemProperty -Path $key -Name 'SamuraiVPNAgent' -Value $env:SAMURAI_AGENT_COMMAND")
+                        : "if (-not (Test-Path $key)) { New-Item -Path $key -Force | Out-Null }; "
+                        + "Set-ItemProperty -Path $key -Name 'SamuraiVPNAgent' -Value $env:SAMURAI_AGENT_COMMAND")
                 + "; exit 0 } catch { [Console]::Out.WriteLine($_.Exception.Message); exit 3 }";
         var builder = new ProcessBuilder(Path.of(System.getenv().getOrDefault("SystemRoot", "C:\\Windows"),
                 "System32", "WindowsPowerShell", "v1.0", "powershell.exe").toString(), "-NoProfile", "-NonInteractive", "-Command", script);
